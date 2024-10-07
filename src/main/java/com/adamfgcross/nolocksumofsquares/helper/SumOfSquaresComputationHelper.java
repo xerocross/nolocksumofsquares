@@ -12,6 +12,9 @@ public class SumOfSquaresComputationHelper {
 	
 	private ExecutorService executorService;
 	
+	private AtomicReference<BigInteger> remainingComputations;
+	
+	
 	public SumOfSquaresComputationHelper(ExecutorService executorService) {
 		this.executorService = executorService;
 	}
@@ -19,6 +22,9 @@ public class SumOfSquaresComputationHelper {
 	public void computeSumOfSquares(SumOfSquaresRequest request) {
 		BigInteger rangeMin = request.getRangeMin();
 		BigInteger rangeMax = request.getRangeMax();
+
+		remainingComputations = new AtomicReference<>(rangeMax.subtract(rangeMin));
+		
 		
 		for (BigInteger i = rangeMin; i.compareTo(rangeMax) < 0; i.add(BigInteger.valueOf(1))) {
 			executorService.submit(() -> {
@@ -27,6 +33,13 @@ public class SumOfSquaresComputationHelper {
 				do {
 					currentSum = totalSum.get();
 				} while (!totalSum.compareAndSet(currentSum, currentSum.add(square)));
+				
+				BigInteger currentRemainingComputations;
+				do {
+					currentRemainingComputations = remainingComputations.get();
+				} while (!remainingComputations.compareAndSet(currentRemainingComputations, 
+						currentRemainingComputations.subtract(BigInteger.valueOf(1))));
+				
 			});
 		}
 		
