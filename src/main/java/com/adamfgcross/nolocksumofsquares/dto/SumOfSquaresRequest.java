@@ -6,7 +6,14 @@ public class SumOfSquaresRequest {
 
 	private BigInteger rangeMin;
 	private BigInteger rangeMax;
+	private Long taskId;
 	
+	public Long getTaskId() {
+		return taskId;
+	}
+	public void setTaskId(Long taskId) {
+		this.taskId = taskId;
+	}
 	public BigInteger getRangeMin() {
 		return rangeMin;
 	}
