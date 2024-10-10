@@ -1,11 +1,9 @@
 package com.adamfgcross.nolocksumofsquares.dto;
 
-import java.math.BigInteger;
-
 public class SumOfSquaresRequest {
 
-	private BigInteger rangeMin;
-	private BigInteger rangeMax;
+	private String rangeMin;
+	private String rangeMax;
 	private Long taskId;
 	
 	public Long getTaskId() {
@@ -14,16 +12,16 @@ public class SumOfSquaresRequest {
 	public void setTaskId(Long taskId) {
 		this.taskId = taskId;
 	}
-	public BigInteger getRangeMin() {
+	public String getRangeMin() {
 		return rangeMin;
 	}
-	public void setRangeMin(BigInteger rangeMin) {
+	public void setRangeMin(String rangeMin) {
 		this.rangeMin = rangeMin;
 	}
-	public BigInteger getRangeMax() {
+	public String getRangeMax() {
 		return rangeMax;
 	}
-	public void setRangeMax(BigInteger rangeMax) {
+	public void setRangeMax(String rangeMax) {
 		this.rangeMax = rangeMax;
 	}
 }
