@@ -18,7 +18,8 @@ public class SumOfSquaresService {
 
 	private TaskService taskService;
 	private final int THREAD_POOL_SIZE = 3;
-	private ExecutorService executorService = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
+	private ExecutorService domainComputationsExecutorService = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
+	private ExecutorService ioExecutorService = Executors.newVirtualThreadPerTaskExecutor();
 	
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 	
@@ -31,12 +32,12 @@ public class SumOfSquaresService {
 		final var taskId = task.getId();
 		request.setTaskId(task.getId());
 		
-		var sumOfSquaresComputationHelper = new SumOfSquaresComputationHelper(executorService, request);
+		var sumOfSquaresComputationHelper = new SumOfSquaresComputationHelper(domainComputationsExecutorService, request);
 		CompletableFuture<BigInteger> futureResult = sumOfSquaresComputationHelper.computeSumOfSquares();
 		
 		futureResult.thenAcceptAsync((sum) -> {
 			taskService.completeTask(taskId, sum.toString());
-		}, executorService);
+		}, ioExecutorService);
 		var response = new SumOfSquaresResponse(task);
 		return response;
 	}
