@@ -1,5 +1,6 @@
 package com.adamfgcross.nolocksumofsquares.service;
 
+import java.math.BigInteger;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -17,7 +18,7 @@ public class SumOfSquaresService {
 
 	private TaskService taskService;
 	private final int THREAD_POOL_SIZE = 3;
-	private ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
+	private ExecutorService executorService = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
 	
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 	
@@ -31,10 +32,10 @@ public class SumOfSquaresService {
 		request.setTaskId(task.getId());
 		
 		var sumOfSquaresComputationHelper = new SumOfSquaresComputationHelper(executorService, request);
-		CompletableFuture<String> futureResult = sumOfSquaresComputationHelper.computeSumOfSquares();
+		CompletableFuture<BigInteger> futureResult = sumOfSquaresComputationHelper.computeSumOfSquares();
 		
 		futureResult.thenAcceptAsync((sum) -> {
-			taskService.completeTask(taskId, sum);
+			taskService.completeTask(taskId, sum.toString());
 		}, executorService);
 		var response = new SumOfSquaresResponse(task);
 		return response;
