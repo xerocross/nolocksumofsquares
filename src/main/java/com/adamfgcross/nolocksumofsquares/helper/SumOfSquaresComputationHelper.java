@@ -45,7 +45,7 @@ public class SumOfSquaresComputationHelper {
 			futures.add(squareComputer.getCompletionFuture());
 			executorService.submit(squareComputer);
 		}
-		CompletableFuture<Void> allDone = CompletableFuture.allOf((CompletableFuture<?>[]) futures.toArray());
+		CompletableFuture<Void> allDone = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
 		
 		allDone.thenRunAsync(() -> {
 			var sum = totalSum.get();
@@ -78,6 +78,7 @@ public class SumOfSquaresComputationHelper {
 
 		public WorkNode(BigInteger num) {
 			this.num = num;
+			this.isTerminal = false;
 		}
 	}
 	
@@ -101,24 +102,34 @@ public class SumOfSquaresComputationHelper {
 		}
 		
 		public void run() {
+			logger.info("started computation in SquareComputer " + id);
 			while (true) {
 				try {
+					//logger.info("getting work...");
 					var workNode = workQueue.take();
+					//logger.info("got work");
 					if (workNode.getIsTerminal()) {
 						logger.info("terminating SquareComputer consumer: " + id);
 						completionFuture.complete(null);
 						break;
 					}
 					var num = workNode.getNum();
+					//logger.info("got: " + num.toString());
 					BigInteger square = num.multiply(num);
 					BigInteger currentSum;
 					do {
 						currentSum = totalSum.get();
+						//logger.info("-- currentSum is " + currentSum.toString());
 					} while (!totalSum.compareAndSet(currentSum, currentSum.add(square)));
 					
 				} catch (InterruptedException e) {
 					e.printStackTrace();
+					logger.info("interrupt exception on SquareComputer " + id);
 					continue;
+				} catch (Exception e) {
+					logger.info("some other exception on SquareComputer " + id);
+					e.printStackTrace();
+					break;
 				}
 			}
 		}
@@ -142,12 +153,15 @@ public class SumOfSquaresComputationHelper {
 				try {
 					if (isTerminated) {
 						if (numTerminalWorkNodesAdded < NUM_CONSUMERS) {
+							logger.info("adding terminal to queue.");
 							queue.put(WorkNode.getTerminal());
 							numTerminalWorkNodesAdded++;
+						} else {
+							logger.info("ending task producer thread");
+							break;
 						}
-						logger.info("ending task producer thread");
-						break;
 					} else {
+						// logger.info("adding " + index.toString() + " to queue.");
 						queue.put(new WorkNode(index));
 						index = index.add(BigInteger.valueOf(1));
 						if (index.compareTo(rangeMax) >= 0) {
@@ -158,6 +172,9 @@ public class SumOfSquaresComputationHelper {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 					continue;
+				} catch (Exception e) {
+					e.printStackTrace();
+					break;
 				}
 				
 			}
