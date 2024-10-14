@@ -7,6 +7,7 @@ import java.util.concurrent.Executors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.adamfgcross.nolocksumofsquares.dto.SumOfSquaresRequest;
@@ -21,6 +22,9 @@ public class SumOfSquaresService {
 	private ExecutorService domainComputationsExecutorService = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
 	private ExecutorService ioExecutorService = Executors.newVirtualThreadPerTaskExecutor();
 	
+	@Value("${spring.concurrency.batch-size}")
+	private Integer BATCH_SIZE;
+	
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 	
 	public SumOfSquaresService(TaskService taskService) {
@@ -33,6 +37,7 @@ public class SumOfSquaresService {
 		request.setTaskId(task.getId());
 		
 		var sumOfSquaresComputationHelper = new SumOfSquaresComputationHelper(domainComputationsExecutorService, request);
+		sumOfSquaresComputationHelper.setBatchSize(BATCH_SIZE);
 		CompletableFuture<BigInteger> futureResult = sumOfSquaresComputationHelper.computeSumOfSquares();
 		
 		futureResult.thenAcceptAsync((sum) -> {

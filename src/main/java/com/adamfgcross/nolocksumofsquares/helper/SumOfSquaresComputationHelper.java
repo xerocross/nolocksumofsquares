@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 
 import com.adamfgcross.nolocksumofsquares.dto.SumOfSquaresRequest;
 
@@ -24,7 +25,17 @@ public class SumOfSquaresComputationHelper {
 	private SumOfSquaresRequest request;
 	private static final int NUM_CONSUMERS = 4;
 	private CompletableFuture<BigInteger> result;
-	private static final Integer BATCH_SIZE = 1000;
+	
+	
+	private Integer batchSize;
+	
+	public void setBatchSize(Integer batchSize) {
+		this.batchSize = batchSize;
+	}
+
+	private Long computationStartTime;
+	private Long computationFinishTime;
+	
 	private BigInteger numBatches;
 	private AtomicReference<BigInteger> batchesComplete = new AtomicReference<>(BigInteger.valueOf(0L));
 	
@@ -47,6 +58,7 @@ public class SumOfSquaresComputationHelper {
 		taskProducerThread.start();
 		List<CompletableFuture<Void>> futures = new ArrayList<>();
 		
+		computationStartTime = System.currentTimeMillis();
 		for (int i = 0; i < NUM_CONSUMERS; i++) {
 			var squareComputer = new SquareComputer((long) i, workQueue, totalSum, batchesComplete);
 			squareComputer.setNumBatches(numBatches);
@@ -57,8 +69,9 @@ public class SumOfSquaresComputationHelper {
 		CompletableFuture<Void> allDone = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
 		
 		allDone.thenRunAsync(() -> {
+			computationFinishTime = System.currentTimeMillis();
 			var sum = totalSum.get();
-			logger.info("completed sum: " + sum);
+			logger.info("completed sum: {}; time: {}", sum, computationFinishTime - computationStartTime);
 			result.complete(sum);
 		}, executorService);
 		
@@ -68,7 +81,7 @@ public class SumOfSquaresComputationHelper {
 	
 	private void setNumBatches(BigInteger rangeMin, BigInteger rangeMax) {
 		BigInteger size = rangeMax.subtract(rangeMin);
-		numBatches = size.divide(BigInteger.valueOf(BATCH_SIZE));		
+		numBatches = size.divide(BigInteger.valueOf(batchSize));		
 	}
 	
 	private static class WorkNode {
@@ -195,7 +208,7 @@ public class SumOfSquaresComputationHelper {
 		}
 	}
 	
-	private static class TaskProducerThread extends Thread {
+	private class TaskProducerThread extends Thread {
 		
 		public TaskProducerThread(BlockingQueue<WorkNode> queue, BigInteger rangeMin, BigInteger rangeMax) {
 			this.queue = queue;
@@ -222,7 +235,7 @@ public class SumOfSquaresComputationHelper {
 						}
 					} else {
 						BigInteger batchMin = index;
-						BigInteger upperBound = index.add(BigInteger.valueOf(BATCH_SIZE));
+						BigInteger upperBound = index.add(BigInteger.valueOf(batchSize));
 						
 						BigInteger batchMax = upperBound.min(rangeMax);
 						queue.put(new WorkNode(batchMin, batchMax));
