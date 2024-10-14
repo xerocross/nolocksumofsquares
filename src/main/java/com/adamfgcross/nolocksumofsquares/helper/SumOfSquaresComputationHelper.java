@@ -1,6 +1,8 @@
 package com.adamfgcross.nolocksumofsquares.helper;
 
+import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -22,6 +24,9 @@ public class SumOfSquaresComputationHelper {
 	private SumOfSquaresRequest request;
 	private static final int NUM_CONSUMERS = 4;
 	private CompletableFuture<BigInteger> result;
+	private static final Integer BATCH_SIZE = 1000;
+	private BigInteger numBatches;
+	private AtomicReference<BigInteger> batchesComplete = new AtomicReference<>(BigInteger.valueOf(0L));
 	
 	
 	public SumOfSquaresComputationHelper(ExecutorService executorService, 
@@ -35,13 +40,17 @@ public class SumOfSquaresComputationHelper {
 		
 		BigInteger rangeMin = new BigInteger(request.getRangeMin());
 		BigInteger rangeMax = new BigInteger(request.getRangeMax());
+		setNumBatches(rangeMin, rangeMax);
+		
 		var workQueue = new ArrayBlockingQueue<WorkNode>(100_000);
 		var taskProducerThread = new TaskProducerThread(workQueue, rangeMin, rangeMax);
 		taskProducerThread.start();
 		List<CompletableFuture<Void>> futures = new ArrayList<>();
 		
 		for (int i = 0; i < NUM_CONSUMERS; i++) {
-			var squareComputer = new SquareComputer((long) i, workQueue, totalSum);
+			var squareComputer = new SquareComputer((long) i, workQueue, totalSum, batchesComplete);
+			squareComputer.setNumBatches(numBatches);
+			squareComputer.setTaskId(request.getTaskId());
 			futures.add(squareComputer.getCompletionFuture());
 			executorService.submit(squareComputer);
 		}
@@ -57,28 +66,40 @@ public class SumOfSquaresComputationHelper {
 	}
 
 	
+	private void setNumBatches(BigInteger rangeMin, BigInteger rangeMax) {
+		BigInteger size = rangeMax.subtract(rangeMin);
+		numBatches = size.divide(BigInteger.valueOf(BATCH_SIZE));		
+	}
+	
 	private static class WorkNode {
 		
-		private BigInteger num;
-		private Boolean isTerminal;
-		
-		public BigInteger getNum() {
-			return num;
-		}
-
 		public static WorkNode getTerminal() {
-			var node = new WorkNode(null);
+			var node = new WorkNode(null, null);
 			node.isTerminal = true;
 			return node;
 		}
 		
-		public Boolean getIsTerminal() {
-			return isTerminal;
+		public WorkNode(BigInteger batchMin, BigInteger batchMax) {
+			this.batchMin = batchMin;
+			this.batchMax = batchMax;
+			this.isTerminal = false;
 		}
 
-		public WorkNode(BigInteger num) {
-			this.num = num;
-			this.isTerminal = false;
+		private BigInteger batchMin;
+		
+		public BigInteger getBatchMin() {
+			return batchMin;
+		}
+
+		public BigInteger getBatchMax() {
+			return batchMax;
+		}
+
+		private BigInteger batchMax;
+		private Boolean isTerminal;
+		
+		public Boolean getIsTerminal() {
+			return isTerminal;
 		}
 	}
 	
@@ -86,8 +107,27 @@ public class SumOfSquaresComputationHelper {
 		
 		private BlockingQueue<WorkNode> workQueue;
 		private AtomicReference<BigInteger> totalSum;
+		private AtomicReference<BigInteger> batchesComplete;
 		private Long id;
 		private CompletableFuture<Void> completionFuture = new CompletableFuture<>();
+		private BigInteger numBatches;
+		private Long taskId;
+
+		public Long getTaskId() {
+			return taskId;
+		}
+
+		public void setTaskId(Long taskId) {
+			this.taskId = taskId;
+		}
+
+		public BigInteger getNumBatches() {
+			return numBatches;
+		}
+
+		public void setNumBatches(BigInteger numBatches) {
+			this.numBatches = numBatches;
+		}
 
 		public CompletableFuture<Void> getCompletionFuture() {
 			return completionFuture;
@@ -95,10 +135,13 @@ public class SumOfSquaresComputationHelper {
 
 		public SquareComputer(Long id,
 				BlockingQueue<WorkNode> workQueue,
-				AtomicReference<BigInteger> totalSum) {
+				AtomicReference<BigInteger> totalSum,
+				AtomicReference<BigInteger> batchesComplete
+				) {
 			this.id = id;
 			this.workQueue = workQueue;
 			this.totalSum = totalSum;
+			this.batchesComplete = batchesComplete;
 		}
 		
 		public void run() {
@@ -113,15 +156,32 @@ public class SumOfSquaresComputationHelper {
 						completionFuture.complete(null);
 						break;
 					}
-					var num = workNode.getNum();
-					//logger.info("got: " + num.toString());
-					BigInteger square = num.multiply(num);
+					
+					var batchMin = workNode.getBatchMin();
+					var batchMax = workNode.getBatchMax();
+					BigInteger sumOfSquares = BigInteger.valueOf(0L);
+					for (BigInteger i = batchMin; i.compareTo(batchMax) < 0; i = i.add(BigInteger.valueOf(1L))) {
+						sumOfSquares = sumOfSquares.add(i.multiply(i));
+					}
+					
+					
 					BigInteger currentSum;
 					do {
 						currentSum = totalSum.get();
 						//logger.info("-- currentSum is " + currentSum.toString());
-					} while (!totalSum.compareAndSet(currentSum, currentSum.add(square)));
+					} while (!totalSum.compareAndSet(currentSum, currentSum.add(sumOfSquares)));
 					
+					
+					BigInteger currentBatchesComplete;
+					Boolean didUpdate;
+					do {
+						currentBatchesComplete = batchesComplete.get();
+						didUpdate = batchesComplete.compareAndSet(currentBatchesComplete, currentBatchesComplete.add(BigInteger.valueOf(1L)));
+						if (didUpdate) {
+							BigDecimal progress = new BigDecimal(currentBatchesComplete).divide(new BigDecimal(numBatches), 2, RoundingMode.HALF_UP);
+							logger.info("task " + taskId + " progress: " + progress.toString());
+						}
+					} while (!didUpdate);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 					logger.info("interrupt exception on SquareComputer " + id);
@@ -161,15 +221,17 @@ public class SumOfSquaresComputationHelper {
 							break;
 						}
 					} else {
-						// logger.info("adding " + index.toString() + " to queue.");
-						queue.put(new WorkNode(index));
-						index = index.add(BigInteger.valueOf(1));
+						BigInteger batchMin = index;
+						BigInteger upperBound = index.add(BigInteger.valueOf(BATCH_SIZE));
+						
+						BigInteger batchMax = upperBound.min(rangeMax);
+						queue.put(new WorkNode(batchMin, batchMax));
+						index = batchMax;
 						if (index.compareTo(rangeMax) >= 0) {
 							isTerminated = true;
 						}
 					}
 				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 					continue;
 				} catch (Exception e) {
