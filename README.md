@@ -3,9 +3,29 @@
 This web service takes requests to compute the sum
 of the squares of the integers between a min and max
 submitted by the user, and handles even very large numbers
-gracefully. 
+gracefully.
 
-The interesting things here are:
+By the way, I do know that there is a formula for computing
+the sum of squares of an interval, but the purpose of this
+project is to practice concurrency and multithreading.
+
+## CURRENTLY IN PROGRESS (Oct 16, 2024)
+
+I realized that my concurrency design didn't make sense for handling
+multiple requests in parallel. That is--is applied concurrency for
+breaking down a single request to make use of multiple processor cores,
+but the pattern I was using would probably have resulted in unnecessary
+thrashing with multiple requests coming in at once.
+
+I am refactoring to queue the jobs against two ExecutorService instances,
+one with a fixed thread pool for performing core computations and another
+that uses virtual threads for performing IOs. I'll be happy to
+explain those choices if interested.
+
+
+
+
+## The interesting things here are:
 
 * It performs the computation in a **concurrent**/**multithreaded** way.
 * It uses no-lock techniques--that is, no lock or synchronization. It
