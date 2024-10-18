@@ -43,6 +43,12 @@ public class TaskService {
 	}
 	
 	@Transactional
+	public void setTaskCancelled(Long id) {
+		Task task = taskRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("task with given id not found"));
+		task.setStatus(TaskStatus.CANCELLED);
+	}
+	
+	@Transactional
 	public void setSumOfSquares(Long id, String sumOfSquares) {
 		Task task = taskRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("task with given id not found"));
 		task.setSumOfSquares(sumOfSquares);

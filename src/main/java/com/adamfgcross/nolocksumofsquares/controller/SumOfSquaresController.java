@@ -2,6 +2,7 @@ package com.adamfgcross.nolocksumofsquares.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -9,7 +10,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.adamfgcross.nolocksumofsquares.dto.SumOfSquaresRequest;
-import com.adamfgcross.nolocksumofsquares.dto.SumOfSquaresResponse;
 import com.adamfgcross.nolocksumofsquares.service.SumOfSquaresService;
 
 @RestController
@@ -26,6 +26,12 @@ public class SumOfSquaresController {
 	public ResponseEntity<?> computeSumOfSquares(@RequestBody SumOfSquaresRequest request) {
 		var response = sumOfSquaresService.computeSumOfSquares(request);
 		return ResponseEntity.ok(response);
+	}
+	
+	@PatchMapping("/{id}")
+	public ResponseEntity<?> cancelTask(@PathVariable("id") Long id) {
+		sumOfSquaresService.cancelTask(id);
+		return ResponseEntity.ok(true);
 	}
 	
 	@GetMapping("/{id}")

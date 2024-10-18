@@ -1,6 +1,9 @@
 package com.adamfgcross.nolocksumofsquares.domain;
 
 import java.math.BigInteger;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.adamfgcross.nolocksumofsquares.dto.SumOfSquaresRequest;
@@ -8,36 +11,33 @@ import com.adamfgcross.nolocksumofsquares.dto.SumOfSquaresRequest;
 public class SumOfSquaresJob {
 
 	private Long taskId;
-	
 	private BigInteger rangeMin;
 	private BigInteger rangeMax;
 	private AtomicReference<BigInteger> sumOfSquares;
-	private Boolean isComplete;
-	private AtomicReference<Clock> timeClock = new AtomicReference<>(new Clock(null, null, false));
+	private JobStatus status;
+	private Set<CompletableFuture<Void>> futures = ConcurrentHashMap.newKeySet();
 	
-	private class Clock {
-		private Long startTime;
-		private Long endTime;
-		private Boolean isStarted;
-		
-		public Long getStartTime() {
-			return startTime;
-		}
-
-		public Long getEndTime() {
-			return endTime;
-		}
-
-		public Boolean getIsStarted() {
-			return isStarted;
-		}
-
-		public Clock (Long startTime, Long endTime, Boolean isStarted) {
-			this.startTime = startTime;
-			this.endTime = endTime;
-			this.isStarted = isStarted;
-		}
+	public Set<CompletableFuture<Void>> getFutures() {
+		return futures;
 	}
+	
+	public void addFuture(CompletableFuture<Void> future) {
+		futures.add(future);
+	}
+
+	public void clearFutures() {
+		this.futures.clear();
+	}
+	
+	public JobStatus getStatus() {
+		return status;
+	}
+
+	public void setStatus(JobStatus status) {
+		this.status = status;
+	}
+	
+	private AtomicReference<Clock> timeClock = new AtomicReference<>(new Clock(null, null, false));
 	
 	public Clock getClock() {
 		return timeClock.get();
@@ -101,11 +101,34 @@ public class SumOfSquaresJob {
 	public void setSumOfSquares(AtomicReference<BigInteger> sumOfSquares) {
 		this.sumOfSquares = sumOfSquares;
 	}
-	public Boolean getIsComplete() {
-		return isComplete;
-	}
+
 	public void setIsComplete(Boolean isComplete) {
 		stopClock();
-		this.isComplete = isComplete;
+		this.status = JobStatus.COMPLETE;
 	}
+	
+	private class Clock {
+		private Long startTime;
+		private Long endTime;
+		private Boolean isStarted;
+		
+		public Long getStartTime() {
+			return startTime;
+		}
+
+		public Long getEndTime() {
+			return endTime;
+		}
+
+		public Boolean getIsStarted() {
+			return isStarted;
+		}
+
+		public Clock (Long startTime, Long endTime, Boolean isStarted) {
+			this.startTime = startTime;
+			this.endTime = endTime;
+			this.isStarted = isStarted;
+		}
+	}
+
 }
