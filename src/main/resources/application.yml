@@ -4,4 +4,4 @@ spring:
     concurrency:
       batch-size: 5000000
       thread-pool-size: 3
-      work-queue-size: 100000
+      work-queue-size: 10000
