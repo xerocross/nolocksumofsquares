@@ -4,6 +4,7 @@ import java.math.BigInteger;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.adamfgcross.nolocksumofsquares.dto.SumOfSquaresRequest;
@@ -17,6 +18,19 @@ public class SumOfSquaresJob {
 	private JobStatus status;
 	private Set<CompletableFuture<Void>> futures = ConcurrentHashMap.newKeySet();
 	
+	private AtomicInteger workTasksRemaining = new AtomicInteger(0);
+	
+	public int incrementWorkTask() {
+		return workTasksRemaining.incrementAndGet();
+	}
+	
+	public int decrementWorkTask() {
+		return workTasksRemaining.decrementAndGet();
+	}
+	
+	public int getWorkTasksRemaining() {
+		return workTasksRemaining.get();
+	}
 	public Set<CompletableFuture<Void>> getFutures() {
 		return futures;
 	}
@@ -25,6 +39,10 @@ public class SumOfSquaresJob {
 		futures.add(future);
 	}
 
+	public void removeFuture(CompletableFuture<Void> future) {
+		futures.remove(future);
+	}
+	
 	public void clearFutures() {
 		this.futures.clear();
 	}

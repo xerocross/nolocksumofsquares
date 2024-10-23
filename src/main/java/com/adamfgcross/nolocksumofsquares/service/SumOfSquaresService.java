@@ -1,11 +1,7 @@
 package com.adamfgcross.nolocksumofsquares.service;
 
-import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.math.RoundingMode;
-import java.util.LinkedList;
 import java.util.Optional;
-import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -14,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -97,6 +94,7 @@ public class SumOfSquaresService {
 		Optional.ofNullable(jobsById.get(taskId))
 			.ifPresent((job) -> {
 				var taskFutures = job.getFutures();
+				logger.info("cancelling job {}; scheduled tasks remaining: {}; futures: {}", taskId, job.getWorkTasksRemaining(), taskFutures.size());
 				taskFutures.forEach(future -> {
 					logger.info("cancelling future for task {}", taskId);
 					future.cancel(true);
@@ -105,7 +103,36 @@ public class SumOfSquaresService {
 				CompletableFuture.runAsync(() -> {
 					taskService.setTaskCancelled(taskId);
 				}, ioExecutorService);
+				job.clearFutures();
+				removeJobFromMemory(job);
 			});
+	}
+	
+	private void onJobComplete(SumOfSquaresJob job) {
+		logger.info("job {} complete", job.getTaskId());
+		CompletableFuture.runAsync(() -> {
+			try {
+				job.setIsComplete(true);
+				var sum = job.getSumOfSquares().get();
+				taskService.completeTask(job.getTaskId(), sum.toString());
+				removeJobFutures(job);
+				var runTime = job.getRuntime();
+				logger.info("job {}; sum {}; runtime {}", job.getTaskId(), sum, runTime);
+			} catch (Exception e) {
+				logger.error("error", e);
+			} finally {
+				removeJobFromMemory(job);
+			}
+		}, ioExecutorService);
+	}
+	
+	private void removeJobFutures(SumOfSquaresJob job) {
+		job.clearFutures();
+	}
+	
+	private void removeJobFromMemory(SumOfSquaresJob job) {
+		logger.info("removing job {} from memory", job.getTaskId());
+		jobsById.remove(job.getTaskId());
 	}
 	
 	private static class JobPlaceholder {
@@ -148,7 +175,6 @@ public class SumOfSquaresService {
 		public void terminate() {
 			this.terminateThread = true;
 		}
-		
 		
 		public void addJob(SumOfSquaresJob job) {
 			jobQueue.add(job);
@@ -204,6 +230,8 @@ public class SumOfSquaresService {
 					// logger.info("found that is terminated: {}", isTerminated);
 					jobPlaceholder = new JobPlaceholder(jobPlaceholder.getJob(), batchMax, isTerminated);
 				}
+				
+				
 			}
 			logger.info("work lease thread terminating");
 		}
@@ -219,7 +247,7 @@ public class SumOfSquaresService {
 		private BlockingQueue<WorkNode> workQueue;
 		private boolean terminated = false;
 		private Logger logger = LoggerFactory.getLogger(this.getClass());
-		
+		private Semaphore semaphore = new Semaphore(WORK_QUEUE_SIZE);
 		
 		
 		public WorkScheduler(BlockingQueue<WorkNode> workQueue) {
@@ -229,30 +257,10 @@ public class SumOfSquaresService {
 		public void terminate() {
 			this.terminated = true;
 		}
+
 		
-		private void onAllJobTasksScheduled(SumOfSquaresJob sumOfSquaresJob) {
-			logger.info("all tasks for job {} have been scheduled", sumOfSquaresJob.getTaskId());
-			var jobFutures = sumOfSquaresJob.getFutures();
-			var allCompleteFuture = CompletableFuture.allOf(jobFutures.toArray(new CompletableFuture[0]));
-			
-			allCompleteFuture.thenRunAsync(() -> {
-				try {
-					sumOfSquaresJob.setIsComplete(true);
-					var sum = sumOfSquaresJob.getSumOfSquares().get();
-					
-					taskService.completeTask(sumOfSquaresJob.getTaskId(), sum.toString());
-					removeJobFutures(sumOfSquaresJob);
-					var runTime = sumOfSquaresJob.getRuntime();
-					logger.info("job {}; sum {}; runtime {}", sumOfSquaresJob.getTaskId(), sum, runTime);
-				} catch (Exception e) {
-					logger.error("error", e);
-				}
-			}, ioExecutorService);
-		}
 		
-		private void removeJobFutures(SumOfSquaresJob job) {
-			job.clearFutures();
-		}
+		
 		
 		private BigInteger getSumOfSquaresForBatch(WorkNode workNode) {
 			var batchMin = workNode.getBatchMin();
@@ -274,9 +282,7 @@ public class SumOfSquaresService {
 			try {
 				do {
 					currentSum = job.getSumOfSquares().get();
-//					logger.info("-- currentSum is " + currentSum.toString());
 				} while (!job.getSumOfSquares().compareAndSet(currentSum, currentSum.add(batchSum)));
-//				logger.info("computation of batch update successful");
 			} catch (Exception e) {
 				logger.error("exception", e);
 			}
@@ -291,35 +297,44 @@ public class SumOfSquaresService {
 						// no not schedule work for this job
 						continue;
 					}
-					var taskId = job.getTaskId();
 					
+					semaphore.acquire();
+					logger.info("scheduling batch...");
 					CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-						// compute work from workNode
-						logger.info("working batch...");
 						try {
-							job.startClock();
-						} catch (Exception e) {
-							logger.error("error", e);
+							logger.info("working batch...");
+							try {
+								job.startClock();
+							} catch (Exception e) {
+								logger.error("error", e);
+							}
+							
+							// handle work complete for job
+							if (workNode.getIsTerminal()) {
+								// onAllJobTasksScheduled(job);
+								logger.info("encountered terminal node for job {}", job.getTaskId());
+								return;
+							}
+							var batchSumOfSquares = getSumOfSquaresForBatch(workNode);
+							updateJobSumWithBatchSum(job, batchSumOfSquares);
+						} catch(Exception e) {
+							logger.error("an exception occurred during core computation", e);
+						} finally {
+							semaphore.release();
+							var numTaskRemaining = job.decrementWorkTask();
+							logger.info("on job {} tasks remaining: {}", job.getTaskId(), numTaskRemaining);
+							if (numTaskRemaining == 0) {
+								onJobComplete(job);
+							}
 						}
-						
-						
-						// handle work complete for job
-						if (workNode.getIsTerminal()) {
-							onAllJobTasksScheduled(job);
-							return;
-						}
-						var batchSumOfSquares = getSumOfSquaresForBatch(workNode);
-						updateJobSumWithBatchSum(job, batchSumOfSquares);
-						
 						
 					}, domainComputationsExecutorService);
 					job.addFuture(future);
+					job.incrementWorkTask();
+					future.thenRunAsync(() -> {
+						job.removeFuture(future);
+					}, domainComputationsExecutorService);
 					
-//					var set = futuresByJob.computeIfAbsent(taskId, (id) -> {
-//						Set<CompletableFuture<Void>> newSet = ConcurrentHashMap.newKeySet();
-//						return newSet;
-//					});
-//					set.add(future);
 					
 				} catch (InterruptedException e) {
 					e.printStackTrace();
