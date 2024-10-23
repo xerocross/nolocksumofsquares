@@ -60,4 +60,15 @@ for cancelling. When a task is complete, the ComputableFuture
 is released from memory. When the job is completed entirely,
 the job is released from memory.
 
+## Resource Usage / Becoming Unresponsive
+
+I just ran a test of this app on my own computer on the range
+from 1 to 320000000000. With `work-queue-size` configured at 100,000,
+my system became unresponsive. When I decreased this to 10,000,
+my computer was able to handle it. The `work-queue-size` is the limit
+on the size of the work queue and also the number of tasks scheduled
+at a time. Obviously, a different configuration may be necessary
+on a computer with different resources. And no, I did not wait for
+that computation to finish. I just made sure my computer did not
+become unresponsive.
 
