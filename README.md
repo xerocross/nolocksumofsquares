@@ -13,8 +13,8 @@ project is to practice concurrency and multithreading.
 ## The interesting things here are:
 
 * It performs the computation in a **concurrent**/**multithreaded** way.
-* It uses no-lock techniques--that is, no lock or synchronization. It
-uses AtomicReference with compare-and-set methods.
+* It uses **no-lock techniques**--that is, no lock or synchronization. It
+uses **AtomicReference** with **compare-and-set** methods and **AtomicInteger**.
 * It is designed to handle very large numbers. It uses Java's BigInteger to handle the large numbers, but of course that does not solve all the problems of big numbers (continue reading).
 * It uses a producer-consumer pattern to parcel out work without overloading resources. For details, see the Concurrency Plan below.
 * The result will compute the sum of squares for an interval even if this results in a very huge number, given enough time, without overloading system resources. 
@@ -25,26 +25,39 @@ uses AtomicReference with compare-and-set methods.
 The app computes and sums the squares of all the numbers in the 
 given range.
 
-The plan is as follows.
+The plan/pattern used for concurrency is as follows.
 
 There is a fixed thread pool used for the core computations
 and a separate pool used for database updates. There are also
 two special threads that divide up the jobs into tasks and
 then schedule the tasks.
 
-One of the goals here is to be able to handle very large
-numbers. Because an interval could be very long, if we
-created a task for each number or each batch of numbers 
-in that interval, we could easily max out the memory. Thus,
-one application thread receives requests and creates tasks
-out of them and puts them on a work queue, allowing only 
-a finite number at a time.
+The **WorkLeaseGeneratorThread** thread is a singleton thread 
+that handles all
+job requests and transforms them into tasks in memory stored
+in a finite blocking queue. It will block when the work
+queue is full. This limits the total number of tasks in
+memory, which is certainly necessary so we don't create
+a task object for literally ever number from 1 to 200,000,000
+say.
 
-A second thread pulls these work tasks off the queue and
-schedules them on the ExecutorService that manages the
-main computations.
+The **WorkScheduler** thread is a singleton thread that 
+takes work off the work queue and schedules it against the
+fixed-size computation thread pool. Here we use a semaphore
+to limit the number of tasks scheduled at a given time. The
+semaphore has a configurable limit. A permit is taken before
+scheduling a new task, and a permit is released after
+completion of each task.
 
-Thus, all requests will be scheduled by the same fixed 
-thread pool ExecutorService, and system resources will
-not be overwhelmed even by requests with even very large
-numbers of intervals.
+The app uses a counter to keep track of how many tasks are
+scheduled and outstanding for a given job. To fire completion
+of all tasks for a given job, we watch for that counter to
+reach 0.
+
+The app also does keep ComputableFuture instances for tasks
+that are scheduled but not completed yet. This is necessary
+for cancelling. When a task is complete, the ComputableFuture
+is released from memory. When the job is completed entirely,
+the job is released from memory.
+
+
