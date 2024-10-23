@@ -35,7 +35,6 @@ public class SumOfSquaresService {
 	
 	private ExecutorService domainComputationsExecutorService;
 	private ExecutorService ioExecutorService = Executors.newVirtualThreadPerTaskExecutor();
-	private ConcurrentHashMap<Long, Set<CompletableFuture<Void>>> futuresByJob = new ConcurrentHashMap<>();
 	
 	private ConcurrentHashMap<Long, SumOfSquaresJob> jobsById = new ConcurrentHashMap<>();
 	
@@ -258,10 +257,6 @@ public class SumOfSquaresService {
 			this.terminated = true;
 		}
 
-		
-		
-		
-		
 		private BigInteger getSumOfSquaresForBatch(WorkNode workNode) {
 			var batchMin = workNode.getBatchMin();
 			var batchMax = workNode.getBatchMax();
